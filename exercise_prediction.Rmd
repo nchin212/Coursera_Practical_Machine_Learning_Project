@@ -138,7 +138,7 @@ mean(rpart_pred == valid_set$classe)
 Create a random forest as follows:
 ```{r cache=TRUE}
 set.seed(101)
-rf_control <- trainControl(method="cv", number=3, verboseIter=FALSE)
+rf_control <- trainControl(method="cv", number=3)
 rf_model <- train(classe ~ ., data=train_set, trControl= rf_control, method="rf")
 ```
 
@@ -154,7 +154,7 @@ mean(rf_pred == valid_set$classe)
 Create a gradient boosting algorithm as follows:
 ```{r cache=TRUE}
 set.seed(101)
-gbm_control <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+gbm_control <- trainControl(method = "cv", number = 3)
 gbm_model = train(classe ~., data=train_set, method="gbm", trControl= gbm_control, verbose = FALSE)
 ```
 
