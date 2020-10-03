@@ -1,0 +1,177 @@
+---
+title: "Predicting Weight Lifting Exercises"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+```
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, we will be using data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways and we will predict the manner in which they did the exercise.
+
+## Data
+
+The data for this project was taken from: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+## Loading in the Data
+
+Load in the required libraries.
+```{r}
+library(caret)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+```
+
+Load in the data from the site as follows:
+```{r}
+# Load file into directory
+if (!file.exists("pml-training.csv") | (!file.exists("pml-testing.csv"))) {
+    fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    fileURL2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+      
+    download.file(fileURL,destfile = "./pml-training.csv", method = "curl")
+    download.file(fileURL2,destfile = "./pml-testing.csv", method = "curl")
+}
+
+# Read in the training and test sets
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+Our response variable `classe` consists of 5 different values as expected.
+```{r}
+unique(train$classe)
+```
+
+Observe the dimensions of the training and test sets.
+```{r}
+dim(train)
+dim(test)
+```
+
+## Data Cleaning
+
+Remove the first 5 columns as they are only for identification.
+```{r}
+train<- train[,-c(1:5)]
+test<- test[,-c(1:5)]
+```
+
+Remove the variables that have multiple NA values.
+```{r}
+mul_NA <- sapply(train, function(x) mean(is.na(x))) > 0.90
+train <- train[, mul_NA == FALSE]
+test <- test[, mul_NA == FALSE]
+```
+
+Remove the variables with near zero variance. These variables have very little information because they mostly consist of a single value.
+```{r}
+near_zero <- nearZeroVar(train)
+train <- train[, -near_zero]
+test <- test[, -near_zero]
+```
+
+We check to see if there are any more missing values and find out the dimensions of the training and test sets after cleaning.
+```{r}
+colSums(is.na(train))
+dim(train)
+dim(test)
+```
+
+## Correlation Plot
+
+```{r fig.height=12, fig.width=18}
+corrplot(cor(train[,-54]), type="upper", method="color", tl.col = rgb(0, 0, 0))
+```
+
+From the above plot, we observe that there are only a few variables that are highly correlated. Principal Component Analysis does not appear to be necessary.
+
+
+## Data Splitting
+
+The test set will be put aside for now and to be used later for the prediction quiz. Split the training dataset into training and validation sets and check their dimensions.
+```{r}
+set.seed(101)
+inTrain  <- createDataPartition(train$classe, p=0.7, list=FALSE)
+train_set <- train[inTrain, ]
+valid_set  <- train[-inTrain, ]
+
+dim(train_set)
+dim(valid_set)
+```
+
+## Model Building
+
+The following models will be used to fit the data:
+
+1. Decision Tree
+2. Random Forest
+3. Gradient Boosting
+
+### Decision Tree
+
+Create a decision tree and plot it as follows:
+```{r fig.height=8, fig.width=12}
+set.seed(101)
+rpart_model <- rpart(classe ~ ., data=train_set, method="class")
+rpart.plot(rpart_model)
+```
+
+Use the model to predict the validation set and determine the confusion matrix and accuracy.
+```{r}
+rpart_pred <- predict(rpart_model, valid_set, type="class")
+table(rpart_pred, valid_set$classe)
+mean(rpart_pred == valid_set$classe)
+```
+
+### Random Forest
+
+Create a random forest as follows:
+```{r cache=TRUE}
+set.seed(101)
+rf_control <- trainControl(method="cv", number=3, verboseIter=FALSE)
+rf_model <- train(classe ~ ., data=train_set, trControl= rf_control, method="rf")
+```
+
+Use the model to predict the validation set and determine the confusion matrix and accuracy.
+```{r}
+rf_pred <- predict(rf_model, valid_set)
+table(rf_pred, valid_set$classe)
+mean(rf_pred == valid_set$classe)
+```
+
+### Gradient Boosting
+
+Create a gradient boosting algorithm as follows:
+```{r cache=TRUE}
+set.seed(101)
+gbm_control <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+gbm_model = train(classe ~., data=train_set, method="gbm", trControl= gbm_control, verbose = FALSE)
+```
+
+Use the model to predict the validation set and determine the confusion matrix and accuracy.
+```{r}
+gbm_pred <- predict(gbm_model, valid_set)
+table(gbm_pred, valid_set$classe)
+mean(gbm_pred == valid_set$classe)
+```
+
+Comparing the 3 models, the model with the highest accuracy is random forest, with an accuracy of 99.8%.
+
+## Running Model on Test Set
+
+```{r}
+pred <- predict(rf_model, test)
+pred
+```
+
+
